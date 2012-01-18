@@ -87,6 +87,10 @@ namespace eval Handlebars {
                         incr i
                         set command "get_plain"
                     }
+                    "!" {
+                        incr i
+                        set command ""
+                    }
                     default {
                         set command "get_escaped"
                     }
@@ -97,8 +101,10 @@ namespace eval Handlebars {
                     error "Tag '$open_tag' was not closed properly"
                 }
 
-                set source [string range $template $i $end-1]
-                lappend output [$command $source $stack]
+                if { $command != {} } {
+                    set source [string range $template $i $end-1]
+                    lappend output [$command $source $stack]
+                }
 
                 set i [expr { $end + [string length $close_tag] - 1}]
 
