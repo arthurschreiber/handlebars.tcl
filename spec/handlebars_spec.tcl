@@ -11,6 +11,10 @@ describe "Handlebars" {
                 Handlebars::escape_html "<a href='test.com?a=1&b=2' class=\"yay\">Click here!</a>"
             ] to equal "&lt;a href=&#39;test.com?a=1&amp;b=2&#39; class=&quot;yay&quot;&gt;Click here!&lt;/a&gt;"
         }
+
+        it "does not double-escape html entities" {
+            expect [Handlebars::escape_html "&lt;"] to equal "&lt;"
+        }
     }
 
     it "should be able to render a very basic template" {
