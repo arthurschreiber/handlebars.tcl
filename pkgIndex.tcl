@@ -1,0 +1,1 @@
+package ifneeded handlebars 0.1 [list source [file join $dir "lib" "handlebars.tcl"]]
