@@ -1,140 +1,8 @@
-package provide handlebars 0.1
+lappend auto_path [file join [file dirname [info script]] ".."]
+lappend auto_path [file join [file dirname [info script]] ".." ".." "tclspec"]
 
-namespace eval Handlebars {
-    variable escape_map {
-        "&"     "&amp;"
-        "<"     "&lt;"
-        ">"     "&gt;"
-        "\""    "&quot;"
-        "'"     "&#39;"
-    }
+package require spec/autorun
 
-    proc escape_html { html } {
-        subst [regsub -all {&(?!\w+;)|[<>"']} $html \
-        {[ expr { [dict exists $::Handlebars::escape_map {&}] ? [dict get $::Handlebars::escape_map {&}] : {&} } ]}]
-    }
-
-    proc find_name { name stack } {
-        if { $name == "." } {
-            return [lindex $stack end]
-        } elseif { $name == ".." } {
-            return [lindex $stack end-1]
-        }
-
-        set names [split $name "./"]
-        set last_index [expr { [llength $names] - 1 }]
-        set target [lindex $names end]
-
-        set value ""
-
-        set i [llength $stack]
-        while { $i } {
-            set context [lindex $stack [incr i -1]]
-
-            set j 0
-            while { $j < $last_index } {
-                if { [dict exists $context [lindex $names $j]] } {
-                    set context [dict get $context [lindex $names $j]]
-                } else {
-                    set context [list]
-                    break
-                }
-
-                incr j
-            }
-
-            if { [dict exists $context $target] } {
-                set value [dict get $context $target]
-                break
-            }
-        }
-
-        return $value
-    }
-
-    proc get_escaped { source stack } {
-        escape_html [find_name $source $stack]
-    }
-
-    proc get_plain { source stack } {
-        find_name $source $stack
-    }
-
-    proc render { template {context {}} } {
-        set output [list]
-
-        set open_tag "\{\{"
-        set close_tag "\}\}"
-
-        set stack [list $context]
-
-        set length [string length $template]
-        for {set i 0} {$i < $length} {incr i} {
-            if { [string range $template $i $i+1] == $open_tag } {
-                incr i [string length $open_tag]
-                set c [string index $template $i]
-
-                set next_open_tag $open_tag
-                set next_close_tag $close_tag
-
-                switch $c {
-                    "\{" {
-                        incr i
-                        set close_tag "\}$close_tag"
-                        set command "get_plain"
-                    }
-                    "&" {
-                        incr i
-                        set command "get_plain"
-                    }
-                    "!" {
-                        incr i
-                        set command ""
-                    }
-                    "#" {
-
-                        incr i
-
-                        puts "We're calling a helper!"
-                        if {  }
-
-                        set command ""
-
-                    }
-                    default {
-                        set command "get_escaped"
-                    }
-                }
-
-                set end [string first $close_tag $template $i]
-                if { $end == -1 } {
-                    error "Tag '$open_tag' was not closed properly"
-                }
-
-                if { $command != {} } {
-                    set source [string range $template $i $end-1]
-                    lappend output [$command $source $stack]
-                }
-
-                set i [expr { $end + [string length $close_tag] - 1}]
-
-                set open_tag $next_open_tag
-                set close_tag $next_close_tag
-            } else {
-                set c [string index $template $i]
-                lappend output $c
-            }
-        }
-
-        join $output ""
-    }
-}
-
-
-# lappend auto_path [file join [file dirname [info script]] ".."]
-# lappend auto_path [file join [file dirname [info script]] ".." ".." "tclspec"]
-
-# package require spec/autorun
 
 
 namespace eval Handlebars {
@@ -578,18 +446,6 @@ proc call_helper { helper context block {inverse {{context} {}}} } {
         } else {
             return [apply $inverse $context]
         }
-    } elseif { $name == "each" } {
-
-        if { [exists_name [lindex $params 0] $context] && [llength [find_name [lindex $params 0] $context]] > 0 } {
-            set result [list]
-            foreach value [find_name [lindex $params 0] $context] {
-                lappend result [apply $block $value]
-            }
-            return $result
-        } else {
-          return [apply $inverse $context]
-        }
-
     } else {
         puts "Unknown helper: $name"
         return ""
@@ -606,19 +462,6 @@ proc call_helper { helper context block {inverse {{context} {}}} } {
 
 puts [Handlebars::compile "{{#if goodbye}}GOODBYE {{/goodbye}}cruel {{world}}!"]
 
-puts [Handlebars::compile "{{#each names}}GOODBYE {{.}} {{/each}}cruel {{world}}!"]
-
-puts [apply {*}[Handlebars::compile "
-{{#each names}}
-  GOODBYE {{.}}
-{{/each}}
-
-cruel {{world}}!
-"] [list names [list 1 2 4 ]]]
-
-
-#puts [apply {*}[Handlebars::compile "{{#if goodbye}}GOODBYE {{/goodbye}}cruel {{world}}!"] {}]
-
 # puts [time {
 #     apply [lindex "{{} { expr { 1 + 1 }}}" 0]
 # } 1000]
@@ -633,259 +476,259 @@ cruel {{world}}!
 # }]
 
 
-# describe "Handlebars::render" {
-#     it "compiling with a basic context" {
-#         expect [
-#             Handlebars::render "Goodbye\n{{cruel}}\n{{world}}!" { cruel "cruel" world "world" }
-#         ] to equal "Goodbye\ncruel\nworld!"
-#     }
-
-#     it "comments" {
-#         expect [
-#             Handlebars::render "{{! Goodbye}}Goodbye\n{{cruel}}\n{{world}}!" { cruel "cruel" world "world" }
-#         ] to equal "Goodbye\ncruel\nworld!"
-#     }
-
-#     it "booleans" {
-#         expect [
-#             Handlebars::render "{{#if goodbye}}GOODBYE {{/goodbye}}cruel {{world}}!" { goodbye true world "world" }
-#         ] to equal "GOODBYE cruel world!"
-
-#         expect [
-#             Handlebars::render "{{#if goodbye}}GOODBYE {{/goodbye}}cruel {{world}}!" { goodbye false world "world" }
-#         ] to equal "cruel world!"
-#     }
-
-#     it "zeros" {
-#         expect [
-#             Handlebars::render "num1: {{num1}}, num2: {{num2}}" { num1 42 num2 0 }
-#         ] to equal "num1: 42, num2: 0"
-
-#         expect [
-#             Handlebars::render "num: {{.}}" 0
-#         ] to equal "num: 0"
-
-#         expect [
-#             Handlebars::render "num: {{num1/num2}}" [list num1 [list num2 0]]
-#         ] to equal "num: 0"
-#     }
-
-#     it "newlines" {
-#         expect [
-#             Handlebars::render "{{#if goodbye}}GOODBYE {{/goodbye}}cruel {{world}}!" { goodbye false world "world" }
-#         ] to equal "GOODBYE cruel world!"
-#     }
-# }
-
-# describe "Mustache::Lexer" {
-#     proc tokenize { template } {
-#         set lexer [Handlebars::Lexer::initialize $template]
-
-#         set tokens [list]
-#         while { [set token [Handlebars::Lexer::read_token lexer]] != "EOF" && [lindex $token 0] != "INVALID" } {
-#             if { $token != {} && [lindex $token 0] != "CONTENT" || [lindex $token 1] != "" } {
-#                 lappend tokens $token
-#             }
-#         }
-#         return $tokens
-#     }
-
-#     proc map_to_types { tokens } {
-#         set types [list]
-#         foreach token $tokens {
-#             lappend types [lindex $token 0]
-#         }
-#         return $types
-#     }
-
-#     it "tokenizes a simple mustache as 'OPEN ID CLOSE'" {
-#         set tokens [tokenize "{{foo}}"]
-#         expect [map_to_types $tokens] to equal [list OPEN ID CLOSE]
-#     }
-
-#     # it "supports escaping delimiters" {
-#     #     set tokens [tokenize "{{foo}} \\{{bar}} {{baz}}"]
-#     #     expect [map_to_types $tokens] to equal [list OPEN ID CLOSE CONTENT CONTENT OPEN ID CLOSE]
-#     #     expect [lindex $tokens 4] to equal [list "CONTENT" "{{bar}}"]
-#     # }
-
-#     # it "supports escaping a triple stash"{
-#     #     set tokens [tokenize "{{foo}} \\{{{bar}}} {{baz}}"]
-#     #     expect [map_to_types $tokens] to equal [list OPEN ID CLOSE CONTENT CONTENT OPEN ID CLOSE]
-#     #     expect [lindex $tokens 4] to equal [list "CONTENT" "{{{bar}}}"]
-#     # }
-
-#     it "tokenizes a simple path" {
-#         set tokens [tokenize "{{foo/bar}}"]
-#         expect [map_to_types $tokens] to equal [list OPEN ID SEP ID CLOSE]
-#     }
-
-#     it "allows dot notation" {
-#         set tokens [tokenize "{{foo.bar}}"]
-#         expect [map_to_types $tokens] to equal [list OPEN ID SEP ID CLOSE]
-#     }
-
-#     it "allows path literals with \[]" {
-#         set tokens [tokenize "{{foo.\[bar]}}"]
-#         expect [map_to_types $tokens] to equal [list OPEN ID SEP ID CLOSE]
-#         expect [lindex $tokens 3] to equal [list "ID" "bar"]
-#     }
+describe "Handlebars::render" {
+    it "compiling with a basic context" {
+        expect [
+            Handlebars::render "Goodbye\n{{cruel}}\n{{world}}!" { cruel "cruel" world "world" }
+        ] to equal "Goodbye\ncruel\nworld!"
+    }
+
+    it "comments" {
+        expect [
+            Handlebars::render "{{! Goodbye}}Goodbye\n{{cruel}}\n{{world}}!" { cruel "cruel" world "world" }
+        ] to equal "Goodbye\ncruel\nworld!"
+    }
+
+    it "booleans" {
+        expect [
+            Handlebars::render "{{#if goodbye}}GOODBYE {{/goodbye}}cruel {{world}}!" { goodbye true world "world" }
+        ] to equal "GOODBYE cruel world!"
+
+        expect [
+            Handlebars::render "{{#if goodbye}}GOODBYE {{/goodbye}}cruel {{world}}!" { goodbye false world "world" }
+        ] to equal "cruel world!"
+    }
+
+    it "zeros" {
+        expect [
+            Handlebars::render "num1: {{num1}}, num2: {{num2}}" { num1 42 num2 0 }
+        ] to equal "num1: 42, num2: 0"
+
+        expect [
+            Handlebars::render "num: {{.}}" 0
+        ] to equal "num: 0"
+
+        expect [
+            Handlebars::render "num: {{num1/num2}}" [list num1 [list num2 0]]
+        ] to equal "num: 0"
+    }
+
+    it "newlines" {
+        expect [
+            Handlebars::render "{{#if goodbye}}GOODBYE {{/goodbye}}cruel {{world}}!" { goodbye false world "world" }
+        ] to equal "GOODBYE cruel world!"
+    }
+}
+
+describe "Mustache::Lexer" {
+    proc tokenize { template } {
+        set lexer [Handlebars::Lexer::initialize $template]
+
+        set tokens [list]
+        while { [set token [Handlebars::Lexer::read_token lexer]] != "EOF" && [lindex $token 0] != "INVALID" } {
+            if { $token != {} && [lindex $token 0] != "CONTENT" || [lindex $token 1] != "" } {
+                lappend tokens $token
+            }
+        }
+        return $tokens
+    }
+
+    proc map_to_types { tokens } {
+        set types [list]
+        foreach token $tokens {
+            lappend types [lindex $token 0]
+        }
+        return $types
+    }
+
+    it "tokenizes a simple mustache as 'OPEN ID CLOSE'" {
+        set tokens [tokenize "{{foo}}"]
+        expect [map_to_types $tokens] to equal [list OPEN ID CLOSE]
+    }
+
+    # it "supports escaping delimiters" {
+    #     set tokens [tokenize "{{foo}} \\{{bar}} {{baz}}"]
+    #     expect [map_to_types $tokens] to equal [list OPEN ID CLOSE CONTENT CONTENT OPEN ID CLOSE]
+    #     expect [lindex $tokens 4] to equal [list "CONTENT" "{{bar}}"]
+    # }
+
+    # it "supports escaping a triple stash"{
+    #     set tokens [tokenize "{{foo}} \\{{{bar}}} {{baz}}"]
+    #     expect [map_to_types $tokens] to equal [list OPEN ID CLOSE CONTENT CONTENT OPEN ID CLOSE]
+    #     expect [lindex $tokens 4] to equal [list "CONTENT" "{{{bar}}}"]
+    # }
+
+    it "tokenizes a simple path" {
+        set tokens [tokenize "{{foo/bar}}"]
+        expect [map_to_types $tokens] to equal [list OPEN ID SEP ID CLOSE]
+    }
+
+    it "allows dot notation" {
+        set tokens [tokenize "{{foo.bar}}"]
+        expect [map_to_types $tokens] to equal [list OPEN ID SEP ID CLOSE]
+    }
+
+    it "allows path literals with \[]" {
+        set tokens [tokenize "{{foo.\[bar]}}"]
+        expect [map_to_types $tokens] to equal [list OPEN ID SEP ID CLOSE]
+        expect [lindex $tokens 3] to equal [list "ID" "bar"]
+    }
 
-#     it "allows multiple path literals on a line with \[]" {
-#         set tokens [tokenize "{{foo.\[bar]}}{{foo.\[baz]}}"]
-#         expect [map_to_types $tokens] to equal [list OPEN ID SEP ID CLOSE OPEN ID SEP ID CLOSE]
-#     }
+    it "allows multiple path literals on a line with \[]" {
+        set tokens [tokenize "{{foo.\[bar]}}{{foo.\[baz]}}"]
+        expect [map_to_types $tokens] to equal [list OPEN ID SEP ID CLOSE OPEN ID SEP ID CLOSE]
+    }
 
-#     it "tokenizes {{.}} as OPEN ID CLOSE" {
-#         set tokens [tokenize "{{.}}"]
-#         expect [map_to_types $tokens] to equal [list OPEN ID CLOSE]
-#     }
+    it "tokenizes {{.}} as OPEN ID CLOSE" {
+        set tokens [tokenize "{{.}}"]
+        expect [map_to_types $tokens] to equal [list OPEN ID CLOSE]
+    }
 
-#     it "tokenizes a path as 'OPEN (ID SEP)* ID CLOSE'" {
-#         set tokens [tokenize "{{../foo/bar}}"]
-#         expect [map_to_types $tokens] to equal [list OPEN ID SEP ID SEP ID CLOSE]
-#         expect [lindex $tokens 1] to equal [list "ID" ".."]
-#     }
+    it "tokenizes a path as 'OPEN (ID SEP)* ID CLOSE'" {
+        set tokens [tokenize "{{../foo/bar}}"]
+        expect [map_to_types $tokens] to equal [list OPEN ID SEP ID SEP ID CLOSE]
+        expect [lindex $tokens 1] to equal [list "ID" ".."]
+    }
 
-#     it "tokenizes a path with .. as a parent path" {
-#         set tokens [tokenize "{{../foo.bar}}"]
-#         expect [map_to_types $tokens] to equal [list OPEN ID SEP ID SEP ID CLOSE]
-#         expect [lindex $tokens 1] to equal [list "ID" ".."]
-#     }
+    it "tokenizes a path with .. as a parent path" {
+        set tokens [tokenize "{{../foo.bar}}"]
+        expect [map_to_types $tokens] to equal [list OPEN ID SEP ID SEP ID CLOSE]
+        expect [lindex $tokens 1] to equal [list "ID" ".."]
+    }
 
-#     it "tokenizes a path with this/foo as OPEN ID SEP ID CLOSE" {
-#         set tokens [tokenize "{{this/foo}}"]
-#         expect [map_to_types $tokens] to equal [list OPEN ID SEP ID CLOSE]
-#         expect [lindex $tokens 1] to equal [list "ID" "this"]
-#         expect [lindex $tokens 3] to equal [list "ID" "foo"]
-#     }
+    it "tokenizes a path with this/foo as OPEN ID SEP ID CLOSE" {
+        set tokens [tokenize "{{this/foo}}"]
+        expect [map_to_types $tokens] to equal [list OPEN ID SEP ID CLOSE]
+        expect [lindex $tokens 1] to equal [list "ID" "this"]
+        expect [lindex $tokens 3] to equal [list "ID" "foo"]
+    }
 
-#     it "tokenizes a simple mustache with spaces as 'OPEN ID CLOSE'" {
-#         set tokens [tokenize "{{  foo  }}"]
-#         expect [map_to_types $tokens] to equal [list OPEN ID CLOSE]
-#         expect [lindex $tokens 1] to equal [list "ID" "foo"]
-#     }
+    it "tokenizes a simple mustache with spaces as 'OPEN ID CLOSE'" {
+        set tokens [tokenize "{{  foo  }}"]
+        expect [map_to_types $tokens] to equal [list OPEN ID CLOSE]
+        expect [lindex $tokens 1] to equal [list "ID" "foo"]
+    }
 
-#     it "tokenizes a simple mustache with line breaks as 'OPEN ID ID CLOSE'" {
-#         set tokens [tokenize "{{  foo  \n   bar }}"]
-#         expect [map_to_types $tokens] to equal [list OPEN ID ID CLOSE]
-#         expect [lindex $tokens 1] to equal [list "ID" "foo"]
-#     }
+    it "tokenizes a simple mustache with line breaks as 'OPEN ID ID CLOSE'" {
+        set tokens [tokenize "{{  foo  \n   bar }}"]
+        expect [map_to_types $tokens] to equal [list OPEN ID ID CLOSE]
+        expect [lindex $tokens 1] to equal [list "ID" "foo"]
+    }
 
-#     it "tokenizes raw content as 'CONTENT'" {
-#         set tokens [tokenize "foo {{ bar }} baz"]
-#         expect [map_to_types $tokens] to equal [list CONTENT OPEN ID CLOSE CONTENT]
-#         expect [lindex $tokens 0] to equal [list "CONTENT" "foo "]
-#         expect [lindex $tokens 4] to equal [list "CONTENT" " baz"]
-#     }
+    it "tokenizes raw content as 'CONTENT'" {
+        set tokens [tokenize "foo {{ bar }} baz"]
+        expect [map_to_types $tokens] to equal [list CONTENT OPEN ID CLOSE CONTENT]
+        expect [lindex $tokens 0] to equal [list "CONTENT" "foo "]
+        expect [lindex $tokens 4] to equal [list "CONTENT" " baz"]
+    }
 
-#     it "tokenizes a partial as 'OPEN_PARTIAL ID CLOSE'" {
+    it "tokenizes a partial as 'OPEN_PARTIAL ID CLOSE'" {
 
-#     }
+    }
 
-#     it "tokenizes a partial with context as 'OPEN_PARTIAL ID ID CLOSE'" {
+    it "tokenizes a partial with context as 'OPEN_PARTIAL ID ID CLOSE'" {
 
-#     }
+    }
 
-#     it "tokenizes a partial without spaces as 'OPEN_PARTIAL ID CLOSE'" {
+    it "tokenizes a partial without spaces as 'OPEN_PARTIAL ID CLOSE'" {
 
-#     }
+    }
 
-#     it "tokenizes a partial space at the end as 'OPEN_PARTIAL ID CLOSE'" {
+    it "tokenizes a partial space at the end as 'OPEN_PARTIAL ID CLOSE'" {
 
-#     }
+    }
 
-#     it "tokenizes a comment as 'COMMENT'" {
+    it "tokenizes a comment as 'COMMENT'" {
 
-#     }
+    }
 
-#     it "tokenizes open and closing blocks as 'OPEN_BLOCK ID CLOSE ... OPEN_ENDBLOCK ID CLOSE'" {
+    it "tokenizes open and closing blocks as 'OPEN_BLOCK ID CLOSE ... OPEN_ENDBLOCK ID CLOSE'" {
 
-#     }
+    }
 
-#     it "tokenizes inverse sections as 'OPEN_INVERSE CLOSE'" {
+    it "tokenizes inverse sections as 'OPEN_INVERSE CLOSE'" {
 
-#     }
+    }
 
-#     it "tokenizes inverse sections with ID as 'OPEN_INVERSE ID CLOSE'" {
+    it "tokenizes inverse sections with ID as 'OPEN_INVERSE ID CLOSE'" {
 
-#     }
+    }
 
-#     it "tokenizes inverse sections with ID and spaces as 'OPEN_INVERSE ID CLOSE'" {
+    it "tokenizes inverse sections with ID and spaces as 'OPEN_INVERSE ID CLOSE'" {
 
-#     }
+    }
 
-#     it "tokenizes mustaches with params as 'OPEN ID ID ID CLOSE'" {
+    it "tokenizes mustaches with params as 'OPEN ID ID ID CLOSE'" {
 
-#     }
+    }
 
-#     it "tokenizes mustaches with String params as 'OPEN ID ID STRING CLOSE'" {
+    it "tokenizes mustaches with String params as 'OPEN ID ID STRING CLOSE'" {
 
-#     }
+    }
 
-#     it "tokenizes String params with spaces inside as 'STRING'" {
+    it "tokenizes String params with spaces inside as 'STRING'" {
 
-#     }
+    }
 
-#     it "tokenizes String params with escapes quotes as 'STRING'" {
+    it "tokenizes String params with escapes quotes as 'STRING'" {
 
-#     }
+    }
 
-#     it "tokenizes numbers" {
-#         set tokens [tokenize "{{ foo 1 }}"]
-#         expect [map_to_types $tokens] to equal [list OPEN ID INTEGER CLOSE]
-#         expect [lindex $tokens 2] to equal [list "INTEGER" "1"]
-#     }
+    it "tokenizes numbers" {
+        set tokens [tokenize "{{ foo 1 }}"]
+        expect [map_to_types $tokens] to equal [list OPEN ID INTEGER CLOSE]
+        expect [lindex $tokens 2] to equal [list "INTEGER" "1"]
+    }
 
-#     it "tokenizes booleans" {
-#         set tokens [tokenize "{{ foo true }}"]
-#         expect [map_to_types $tokens] to equal [list OPEN ID BOOLEAN CLOSE]
-#         expect [lindex $tokens 2] to equal [list "BOOLEAN" "true"]
+    it "tokenizes booleans" {
+        set tokens [tokenize "{{ foo true }}"]
+        expect [map_to_types $tokens] to equal [list OPEN ID BOOLEAN CLOSE]
+        expect [lindex $tokens 2] to equal [list "BOOLEAN" "true"]
 
-#         set tokens [tokenize "{{ foo false }}"]
-#         expect [map_to_types $tokens] to equal [list OPEN ID BOOLEAN CLOSE]
-#         expect [lindex $tokens 2] to equal [list "BOOLEAN" "false"]
-#     }
+        set tokens [tokenize "{{ foo false }}"]
+        expect [map_to_types $tokens] to equal [list OPEN ID BOOLEAN CLOSE]
+        expect [lindex $tokens 2] to equal [list "BOOLEAN" "false"]
+    }
 
-#     it "tokenizes hash arguments" {
-#         set tokens [tokenize "{{ foo bar=baz }}"]
-#         expect [map_to_types $tokens] to equal [list OPEN ID ID EQUALS ID CLOSE]
+    it "tokenizes hash arguments" {
+        set tokens [tokenize "{{ foo bar=baz }}"]
+        expect [map_to_types $tokens] to equal [list OPEN ID ID EQUALS ID CLOSE]
 
-#         set tokens [tokenize "{{ foo bar baz=bat }}"]
-#         expect [map_to_types $tokens] to equal [list OPEN ID ID ID EQUALS ID CLOSE]
+        set tokens [tokenize "{{ foo bar baz=bat }}"]
+        expect [map_to_types $tokens] to equal [list OPEN ID ID ID EQUALS ID CLOSE]
 
-#         set tokens [tokenize "{{ foo bar baz=1 }}"]
-#         expect [map_to_types $tokens] to equal [list OPEN ID ID ID EQUALS INTEGER CLOSE]
+        set tokens [tokenize "{{ foo bar baz=1 }}"]
+        expect [map_to_types $tokens] to equal [list OPEN ID ID ID EQUALS INTEGER CLOSE]
 
-#         set tokens [tokenize "{{ foo bar baz=true }}"]
-#         expect [map_to_types $tokens] to equal [list OPEN ID ID ID EQUALS BOOLEAN CLOSE]
+        set tokens [tokenize "{{ foo bar baz=true }}"]
+        expect [map_to_types $tokens] to equal [list OPEN ID ID ID EQUALS BOOLEAN CLOSE]
 
-#         set tokens [tokenize "{{ foo bar baz=false }}"]
-#         expect [map_to_types $tokens] to equal [list OPEN ID ID ID EQUALS BOOLEAN CLOSE]
+        set tokens [tokenize "{{ foo bar baz=false }}"]
+        expect [map_to_types $tokens] to equal [list OPEN ID ID ID EQUALS BOOLEAN CLOSE]
 
-#         set tokens [tokenize "{{ foo bar\n  baz=bat }}"]
-#         expect [map_to_types $tokens] to equal [list OPEN ID ID ID EQUALS ID CLOSE]
+        set tokens [tokenize "{{ foo bar\n  baz=bat }}"]
+        expect [map_to_types $tokens] to equal [list OPEN ID ID ID EQUALS ID CLOSE]
 
-#         set tokens [tokenize "{{ foo bar baz=\"bat\" }}"]
-#         expect [map_to_types $tokens] to equal [list OPEN ID ID ID EQUALS STRING CLOSE]
+        set tokens [tokenize "{{ foo bar baz=\"bat\" }}"]
+        expect [map_to_types $tokens] to equal [list OPEN ID ID ID EQUALS STRING CLOSE]
 
-#         set tokens [tokenize "{{ foo bar baz=\"bat\" bam=wot }}"]
-#         expect [map_to_types $tokens] to equal [list OPEN ID ID ID EQUALS STRING ID EQUALS ID CLOSE]
+        set tokens [tokenize "{{ foo bar baz=\"bat\" bam=wot }}"]
+        expect [map_to_types $tokens] to equal [list OPEN ID ID ID EQUALS STRING ID EQUALS ID CLOSE]
 
-#         set tokens [tokenize "{{foo omg bar=baz bat=\"bam\"}}"]
-#         expect [map_to_types $tokens] to equal [list OPEN ID ID ID EQUALS ID ID EQUALS STRING CLOSE]
-#     }
+        set tokens [tokenize "{{foo omg bar=baz bat=\"bam\"}}"]
+        expect [map_to_types $tokens] to equal [list OPEN ID ID ID EQUALS ID ID EQUALS STRING CLOSE]
+    }
 
-#     it "correctly tokenizes a mustache with a single \} followed by EOF" {
-#         set tokens [tokenize "\{{foo}"]
-#         expect [map_to_types $tokens] to equal [list OPEN ID]
-#     }
+    it "correctly tokenizes a mustache with a single \} followed by EOF" {
+        set tokens [tokenize "\{{foo}"]
+        expect [map_to_types $tokens] to equal [list OPEN ID]
+    }
 
-#     it "correctly tokenizes a mustache when invalid ID characters are used" {
-#         set tokens [tokenize "{{foo & }}"]
-#         expect [map_to_types $tokens] to equal [list OPEN ID]
-#     }
-# }
+    it "correctly tokenizes a mustache when invalid ID characters are used" {
+        set tokens [tokenize "{{foo & }}"]
+        expect [map_to_types $tokens] to equal [list OPEN ID]
+    }
+}
 
 
 
